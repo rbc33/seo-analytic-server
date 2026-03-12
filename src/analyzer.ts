@@ -446,6 +446,7 @@ async function fetchWithAxios(url: string): Promise<string> {
 async function fetchWithPuppeteer(url: string): Promise<string> {
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium-browser',
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   })
   try {
