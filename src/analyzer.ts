@@ -188,7 +188,7 @@ function analyzeContent($: cheerio.CheerioAPI): SEOCategory {
   const wordCount = bodyText
     .split(' ')
     .filter((w) => w.length > 0).length
-  const htmlLength = $.html().length
+  const htmlLength = $clone('body').html()?.length ?? 0
   const textRatio = htmlLength > 0 ? (bodyText.length / htmlLength) * 100 : 0
   const paragraphCount = $('p').length
 
