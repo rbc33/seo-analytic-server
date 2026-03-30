@@ -534,7 +534,8 @@ async function fetchPageRank(domain: string, apiKey: string): Promise<{ pageRank
       pageRank: entry.page_rank_integer ?? 0,
       rank: entry.rank ?? '',
     }
-  } catch {
+  } catch (err) {
+    console.error('PageRank fetch error:', (err as Error).message)
     return null
   }
 }
