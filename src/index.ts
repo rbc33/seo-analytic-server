@@ -15,7 +15,6 @@ app.use(
       "http://localhost:5173",
       "https://seoanalyst.es",
       "https://www.seoanalyst.es",
-      "*",
     ],
     methods: ["GET", "POST"],
   }),
