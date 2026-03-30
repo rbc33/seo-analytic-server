@@ -529,14 +529,12 @@ async function fetchPageRank(domain: string, apiKey: string): Promise<{ pageRank
       timeout: 8000,
     })
     const entry = response.data?.response?.[0]
-    console.log('PageRank response:', JSON.stringify(response.data))
-    if (!entry || entry.status_code !== 200) return null
+    if (!entry) return null
     return {
       pageRank: entry.page_rank_integer ?? 0,
       rank: entry.rank ?? '',
     }
-  } catch (err) {
-    console.error('PageRank fetch error:', (err as Error).message)
+  } catch {
     return null
   }
 }

@@ -65,5 +65,4 @@ app.post('/api/analyze', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`SEO Analyst server running on http://localhost:${PORT}`)
-  console.log(`PAGE_RANK_API configured: ${!!process.env.PAGE_RANK_API}`)
 })
