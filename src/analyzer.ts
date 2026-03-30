@@ -524,8 +524,7 @@ async function checkSitemapExists(origin: string, robotsContent: string): Promis
 
 async function fetchPageRank(domain: string, apiKey: string): Promise<{ pageRank: number; rank: string } | null> {
   try {
-    const response = await axios.get('https://openpagerank.com/api/v1.0/getPageRank', {
-      params: { 'domains[0]': domain },
+    const response = await axios.get(`https://openpagerank.com/api/v1.0/getPageRank?domains[0]=${encodeURIComponent(domain)}`, {
       headers: { 'API-OPR': apiKey },
       timeout: 8000,
     })
@@ -540,7 +539,7 @@ async function fetchPageRank(domain: string, apiKey: string): Promise<{ pageRank
   }
 }
 
-function analyzeBacklinks(domain: string, data: { pageRank: number; rank: string } | null, apiKeyConfigured: boolean): SEOCategory {
+function analyzeBacklinks(_domain: string, data: { pageRank: number; rank: string } | null, apiKeyConfigured: boolean): SEOCategory {
   const checks: SEOCheck[] = []
 
   if (!apiKeyConfigured) {
