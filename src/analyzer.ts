@@ -352,7 +352,11 @@ function analyzeLinks($: cheerio.CheerioAPI, url: string): SEOCategory {
   return { name: 'Links', score, maxScore: 10, checks }
 }
 
-function analyzeTechnical($: cheerio.CheerioAPI, url: string): SEOCategory {
+function analyzeTechnical(
+  $: cheerio.CheerioAPI,
+  url: string,
+  extras: { robotsOk: boolean; sitemapOk: boolean },
+): SEOCategory {
   const checks: SEOCheck[] = []
 
   // HTTPS (5 pts) — localhost/127.0.0.1 are secure contexts by definition
@@ -401,9 +405,7 @@ function analyzeTechnical($: cheerio.CheerioAPI, url: string): SEOCategory {
   // Not blocking indexing (3 pts)
   const robotsMeta =
     $('meta[name="robots"]').attr('content')?.toLowerCase() || ''
-  const xRobotsTag = '' // would need response headers
-  const blockingIndexing =
-    robotsMeta.includes('noindex') || xRobotsTag.includes('noindex')
+  const blockingIndexing = robotsMeta.includes('noindex')
   checks.push({
     name: 'Not blocking search indexing',
     passed: !blockingIndexing,
@@ -417,8 +419,107 @@ function analyzeTechnical($: cheerio.CheerioAPI, url: string): SEOCategory {
     howToFix: !blockingIndexing ? undefined : 'Remove "noindex" from your robots meta tag or X-Robots-Tag header. If this is intentional (staging/preview), make sure the live version does not carry this tag.',
   })
 
+  // robots.txt (3 pts)
+  checks.push({
+    name: 'robots.txt accessible',
+    passed: extras.robotsOk,
+    score: extras.robotsOk ? 3 : 0,
+    maxScore: 3,
+    details: extras.robotsOk
+      ? 'robots.txt found and accessible'
+      : 'robots.txt not found or not accessible',
+    howToFix: extras.robotsOk ? undefined : 'Create a robots.txt file at the root of your domain (e.g. https://example.com/robots.txt). At minimum it can contain:\nUser-agent: *\nAllow: /\nThis tells search engines they are free to crawl your site and prevents "missing robots.txt" warnings in Google Search Console.',
+  })
+
+  // XML Sitemap (3 pts)
+  checks.push({
+    name: 'XML Sitemap',
+    passed: extras.sitemapOk,
+    score: extras.sitemapOk ? 3 : 0,
+    maxScore: 3,
+    details: extras.sitemapOk
+      ? 'XML sitemap found (sitemap.xml or declared in robots.txt)'
+      : 'No XML sitemap found',
+    howToFix: extras.sitemapOk ? undefined : 'Create a sitemap.xml listing all important pages and place it at https://example.com/sitemap.xml. Then declare it in robots.txt:\nSitemap: https://example.com/sitemap.xml\nSubmit the sitemap URL in Google Search Console to accelerate indexing.',
+  })
+
+  // DOM size (2 pts)
+  const domSize = $('*').length
+  const domOk = domSize < 1500
+  checks.push({
+    name: 'DOM size',
+    passed: domOk,
+    score: domOk ? 2 : domSize < 3000 ? 1 : 0,
+    maxScore: 2,
+    details: `${domSize} DOM elements (recommended: under 1500)`,
+    howToFix: domOk ? undefined : `Page has ${domSize} DOM elements. Large DOMs slow down rendering and crawling. Simplify HTML structure, remove unnecessary wrapper divs, and consider lazy-loading off-screen content.`,
+  })
+
   const score = checks.reduce((s, c) => s + c.score, 0)
-  return { name: 'Technical SEO', score, maxScore: 15, checks }
+  return { name: 'Technical SEO', score, maxScore: 23, checks }
+}
+
+function analyzeSocial($: cheerio.CheerioAPI): SEOCategory {
+  const checks: SEOCheck[] = []
+
+  const platforms = [
+    { name: 'YouTube link', domains: ['youtube.com'], fix: 'Add a link to your YouTube channel (e.g. https://youtube.com/@yourchannel) to give visitors access to your video content and strengthen your brand presence.' },
+    { name: 'X (Twitter) link', domains: ['twitter.com', 'x.com'], fix: 'Add a link to your X/Twitter profile to let visitors follow your updates. Example: <a href="https://x.com/yourhandle">Follow us on X</a>.' },
+    { name: 'LinkedIn link', domains: ['linkedin.com'], fix: 'Add a link to your LinkedIn company page or profile to build professional credibility and reach a business audience.' },
+    { name: 'Instagram link', domains: ['instagram.com'], fix: 'Add a link to your Instagram profile to showcase visual content and grow your brand audience on social media.' },
+    { name: 'Facebook link', domains: ['facebook.com'], fix: 'Add a link to your Facebook page to help visitors connect with you and extend your social media reach.' },
+  ]
+
+  const hrefs: string[] = []
+  $('a[href]').each((_, el) => {
+    const href = $(el).attr('href') || ''
+    hrefs.push(href.toLowerCase())
+  })
+
+  for (const platform of platforms) {
+    const found = hrefs.some((href) => platform.domains.some((d) => href.includes(d)))
+    checks.push({
+      name: platform.name,
+      passed: found,
+      score: found ? 1 : 0,
+      maxScore: 1,
+      details: found ? `${platform.name} found` : `No ${platform.name} found`,
+      howToFix: found ? undefined : platform.fix,
+    })
+  }
+
+  const score = checks.reduce((s, c) => s + c.score, 0)
+  return { name: 'Social Signals', score, maxScore: 5, checks }
+}
+
+async function fetchRobotsTxt(origin: string): Promise<{ found: boolean; content: string }> {
+  try {
+    const response = await axios.get(`${origin}/robots.txt`, {
+      headers: { 'User-Agent': USER_AGENT },
+      timeout: 5000,
+      responseType: 'text',
+      validateStatus: (s) => s === 200,
+    })
+    return { found: true, content: response.data as string }
+  } catch {
+    return { found: false, content: '' }
+  }
+}
+
+async function checkSitemapExists(origin: string, robotsContent: string): Promise<boolean> {
+  // Check if robots.txt declares a Sitemap directive
+  if (/^Sitemap:/im.test(robotsContent)) return true
+  // Otherwise try fetching sitemap.xml directly
+  try {
+    await axios.get(`${origin}/sitemap.xml`, {
+      headers: { 'User-Agent': USER_AGENT },
+      timeout: 5000,
+      validateStatus: (s) => s === 200,
+    })
+    return true
+  } catch {
+    return false
+  }
 }
 
 async function fetchWithAxios(url: string): Promise<string> {
@@ -469,22 +570,37 @@ function isSPA(html: string): boolean {
 
 export async function analyzeURL(url: string): Promise<SEOResult> {
   let html: string
-
+  let origin = ''
   try {
-    html = await fetchWithAxios(url)
-    if (isSPA(html)) {
-      console.log('Detected unrendered SPA, switching to Puppeteer…')
-      html = await fetchWithPuppeteer(url)
-    }
-  } catch (err) {
-    const status = (err as AxiosError)?.response?.status
-    if (status && status >= 400) {
-      console.log(`axios got ${status}, retrying with Puppeteer…`)
-      html = await fetchWithPuppeteer(url)
-    } else {
-      throw err
-    }
+    origin = new URL(url).origin
+  } catch {
+    // if URL is malformed, skip robot/sitemap checks
   }
+
+  const [htmlResult, robotsResult] = await Promise.all([
+    (async () => {
+      try {
+        const fetched = await fetchWithAxios(url)
+        if (isSPA(fetched)) {
+          console.log('Detected unrendered SPA, switching to Puppeteer…')
+          return await fetchWithPuppeteer(url)
+        }
+        return fetched
+      } catch (err) {
+        const status = (err as AxiosError)?.response?.status
+        if (status && status >= 400) {
+          console.log(`axios got ${status}, retrying with Puppeteer…`)
+          return await fetchWithPuppeteer(url)
+        }
+        throw err
+      }
+    })(),
+    origin ? fetchRobotsTxt(origin) : Promise.resolve({ found: false, content: '' }),
+  ])
+
+  html = htmlResult
+  const sitemapOk = origin ? await checkSitemapExists(origin, robotsResult.content) : false
+
   const $ = cheerio.load(html)
 
   const categories = [
@@ -493,10 +609,13 @@ export async function analyzeURL(url: string): Promise<SEOResult> {
     analyzeContent($),
     analyzeImages($),
     analyzeLinks($, url),
-    analyzeTechnical($, url),
+    analyzeTechnical($, url, { robotsOk: robotsResult.found, sitemapOk }),
+    analyzeSocial($),
   ]
 
-  const totalScore = categories.reduce((s, c) => s + c.score, 0)
+  const rawScore = categories.reduce((s, c) => s + c.score, 0)
+  const maxTotal = categories.reduce((s, c) => s + c.maxScore, 0)
+  const totalScore = Math.round((rawScore / maxTotal) * 100)
 
   return {
     url,
