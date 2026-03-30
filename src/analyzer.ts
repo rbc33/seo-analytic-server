@@ -522,6 +522,66 @@ async function checkSitemapExists(origin: string, robotsContent: string): Promis
   }
 }
 
+async function fetchPageRank(domain: string, apiKey: string): Promise<{ pageRank: number; rank: string } | null> {
+  try {
+    const response = await axios.get('https://openpagerank.com/api/v1.0/getPageRank', {
+      params: { 'domains[0]': domain },
+      headers: { 'API-OPR': apiKey },
+      timeout: 8000,
+    })
+    const entry = response.data?.response?.[0]
+    if (!entry || entry.status_code !== 200) return null
+    return {
+      pageRank: entry.page_rank_integer ?? 0,
+      rank: entry.rank ?? '',
+    }
+  } catch {
+    return null
+  }
+}
+
+function analyzeBacklinks(domain: string, data: { pageRank: number; rank: string } | null, apiKeyConfigured: boolean): SEOCategory {
+  const checks: SEOCheck[] = []
+
+  if (!apiKeyConfigured) {
+    checks.push({
+      name: 'Domain PageRank',
+      passed: false,
+      score: 0,
+      maxScore: 5,
+      details: 'PAGE_RANK_API not configured on server',
+      howToFix: 'Set the PAGE_RANK_API environment variable on the server to enable backlink analysis. Get a free key at https://www.domcop.com/openpagerank/',
+    })
+    return { name: 'Backlinks', score: 0, maxScore: 5, checks }
+  }
+
+  if (!data) {
+    checks.push({
+      name: 'Domain PageRank',
+      passed: false,
+      score: 0,
+      maxScore: 5,
+      details: 'Could not retrieve PageRank data for this domain',
+    })
+    return { name: 'Backlinks', score: 0, maxScore: 5, checks }
+  }
+
+  const pr = data.pageRank
+  const prScore = pr >= 9 ? 5 : pr >= 7 ? 4 : pr >= 5 ? 3 : pr >= 3 ? 2 : pr >= 1 ? 1 : 0
+  const rankLabel = data.rank ? ` — global rank #${Number(data.rank).toLocaleString()}` : ''
+  checks.push({
+    name: 'Domain PageRank',
+    passed: pr >= 1,
+    score: prScore,
+    maxScore: 5,
+    details: `PageRank ${pr}/10${rankLabel}`,
+    howToFix: pr >= 1 ? undefined : `Domain has no measured PageRank yet. Earn backlinks by publishing shareable content, getting listed in relevant directories, and submitting your site to Google Search Console. Quality matters more than quantity — one link from an authoritative site outweighs dozens from low-quality ones.`,
+  })
+
+  const score = checks.reduce((s, c) => s + c.score, 0)
+  return { name: 'Backlinks', score, maxScore: 5, checks }
+}
+
 async function fetchWithAxios(url: string): Promise<string> {
   const response = await axios.get(url, {
     headers: {
@@ -577,7 +637,10 @@ export async function analyzeURL(url: string): Promise<SEOResult> {
     // if URL is malformed, skip robot/sitemap checks
   }
 
-  const [htmlResult, robotsResult] = await Promise.all([
+  const oprApiKey = process.env.PAGE_RANK_API ?? ''
+  const domain = origin ? new URL(origin).hostname : ''
+
+  const [htmlResult, robotsResult, pageRankData] = await Promise.all([
     (async () => {
       try {
         const fetched = await fetchWithAxios(url)
@@ -596,6 +659,7 @@ export async function analyzeURL(url: string): Promise<SEOResult> {
       }
     })(),
     origin ? fetchRobotsTxt(origin) : Promise.resolve({ found: false, content: '' }),
+    oprApiKey && domain ? fetchPageRank(domain, oprApiKey) : Promise.resolve(null),
   ])
 
   html = htmlResult
@@ -611,6 +675,7 @@ export async function analyzeURL(url: string): Promise<SEOResult> {
     analyzeLinks($, url),
     analyzeTechnical($, url, { robotsOk: robotsResult.found, sitemapOk }),
     analyzeSocial($),
+    analyzeBacklinks(domain, pageRankData, oprApiKey.length > 0),
   ]
 
   const rawScore = categories.reduce((s, c) => s + c.score, 0)
