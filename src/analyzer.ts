@@ -24,7 +24,7 @@ function analyzeMetaTags($: cheerio.CheerioAPI): SEOCategory {
   // Title (7 pts)
   const title = $('title').first().text().trim()
   const titleLen = title.length
-  const titlePassed = titleLen >= 10 && titleLen <= 70
+  const titlePassed = titleLen >= 4 && titleLen <= 70
   checks.push({
     name: 'Title tag',
     passed: titlePassed,
@@ -35,8 +35,8 @@ function analyzeMetaTags($: cheerio.CheerioAPI): SEOCategory {
       : 'Missing title tag',
     howToFix: titlePassed ? undefined : !title
       ? 'Add a <title> tag inside <head>. Example: <title>My Page — Brand Name</title>'
-      : titleLen < 10
-        ? `Title is too short (${titleLen} chars). Aim for 30–70 characters that clearly describe the page.`
+      : titleLen < 4
+        ? `Title is too short (${titleLen} chars). Aim for 10–70 characters that clearly describe the page.`
         : `Title is too long (${titleLen} chars). Trim it to under 70 characters to avoid truncation in search results.`,
   })
 
@@ -46,7 +46,7 @@ function analyzeMetaTags($: cheerio.CheerioAPI): SEOCategory {
     $('meta[name="Description"]').attr('content')?.trim() ||
     ''
   const descLen = desc.length
-  const descPassed = descLen >= 50 && descLen <= 160
+  const descPassed = descLen >= 30 && descLen <= 180
   checks.push({
     name: 'Meta description',
     passed: descPassed,
@@ -57,9 +57,9 @@ function analyzeMetaTags($: cheerio.CheerioAPI): SEOCategory {
       : 'Missing meta description',
     howToFix: descPassed ? undefined : !desc
       ? 'Add <meta name="description" content="…"> inside <head> with a 50–160 character summary of the page.'
-      : descLen < 50
+      : descLen < 30
         ? `Description is too short (${descLen} chars). Write at least 50 characters to give Google enough context to display a useful snippet.`
-        : `Description is too long (${descLen} chars). Keep it under 160 characters — anything longer gets cut off in search results.`,
+        : `Description is too long (${descLen} chars). Keep it under 180 characters — anything longer gets cut off in search results.`,
   })
 
   // Viewport (4 pts)
